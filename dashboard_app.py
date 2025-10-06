@@ -39,19 +39,15 @@ st.caption("Part of ongoing PhD research on real-time marine bloom forecasting u
 
 # === CHL / Red Tide Explanation ===
 
-with st.expander("ℹ️ What is CHL and Why It Matters?", expanded=True):
-st.markdown("""
-**Chlorophyll-a (CHL)** is a proxy for phytoplankton levels in the ocean.
-When CHL is abnormally high, it can signal **algal blooms**, including harmful red tides.
+with st.sidebar:
+    st.markdown("""
+    ### 🌊 MARS Dashboard
+    **MARS = Marine Autonomous Red-tide Surveillance**
+    
+    This dashboard is part of Annamaria Souri's PhD research.  
+    Click on a region marker on the map to view its forecasts and metrics.
+    """)
 
-```
-Red tide events can:
-- Release toxins harmful to marine life and humans
-- Deplete oxygen and lead to fish kills
-- Disrupt fisheries, aquaculture, and coastal tourism
-
-The MARS system monitors daily CHL and environmental indicators to forecast bloom risk in coastal areas.
-""")
 ```
 
 # === Interactive Map ===
@@ -108,6 +104,7 @@ if df_selected is not None and not df_selected.empty:
     col5.metric("Min CHL", f"{df_selected['predicted_chl'].min():.2f}")
     col6.metric("Bloom Days", int(df_selected["bloom_risk_flag"].sum()))
 ```
+
 
 
 
