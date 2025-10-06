@@ -71,37 +71,38 @@ st_data = st_folium(m, width=1200, height=700)
 # === Detail panel for selected region ===
 
 if st_data and st_data.get("last_object_clicked_tooltip"):
-selected = st_data["last_object_clicked_tooltip"]
-region_id = [k for k, v in REGIONS.items() if v["name"] == selected][0]
-df_selected = load_forecast(region_id)
+    selected = st_data["last_object_clicked_tooltip"]
+    region_id = [k for k, v in REGIONS.items() if v["name"] == selected][0]
+    df_selected = load_forecast(region_id)
+
+    if df_selected is not None and not df_selected.empty:
+        latest = df_selected.iloc[-1]
+
+        st.markdown(f"## 📍 {selected} — Forecast Summary ({latest['date'].date()})")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Avg CHL", f"{latest['predicted_chl']:.2f} mg/m³")
+        col2.metric("Bloom Risk", "⚠️ Yes" if latest["bloom_risk_flag"] else "✅ No")
+        col3.metric("Threshold", f"{latest['threshold_used']:.2f} mg/m³")
+
+        st.markdown("### 📈 CHL Forecast Trend")
+        st.line_chart(df_selected.set_index("date")["predicted_chl"])
+
+        if "nh4" in df_selected.columns:
+            st.markdown("### 🌱 Nutrients (NH₄, NO₃, PO₄)")
+            st.line_chart(df_selected.set_index("date")[["nh4", "no3", "po4"]])
+
+        if "thetao" in df_selected.columns:
+            st.markdown("### 🌡️ Temperature & Salinity")
+            st.line_chart(df_selected.set_index("date")[["thetao", "so"]])
+
+        st.markdown("### 📊 Summary Statistics")
+        col4, col5, col6 = st.columns(3)
+        col4.metric("Max CHL", f"{df_selected['predicted_chl'].max():.2f}")
+        col5.metric("Min CHL", f"{df_selected['predicted_chl'].min():.2f}")
+        col6.metric("Bloom Days", int(df_selected["bloom_risk_flag"].sum()))
 
 ```
-if df_selected is not None and not df_selected.empty:
-    latest = df_selected.iloc[-1]
 
-    st.markdown(f"## 📍 {selected} — Forecast Summary ({latest['date'].date()})")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Avg CHL", f"{latest['predicted_chl']:.2f} mg/m³")
-    col2.metric("Bloom Risk", "⚠️ Yes" if latest["bloom_risk_flag"] else "✅ No")
-    col3.metric("Threshold", f"{latest['threshold_used']:.2f} mg/m³")
-
-    st.markdown("### 📈 CHL Forecast Trend")
-    st.line_chart(df_selected.set_index("date")["predicted_chl"])
-
-    if "nh4" in df_selected.columns:
-        st.markdown("### 🌱 Nutrients (NH₄, NO₃, PO₄)")
-        st.line_chart(df_selected.set_index("date")[["nh4", "no3", "po4"]])
-
-    if "thetao" in df_selected.columns:
-        st.markdown("### 🌡️ Temperature & Salinity")
-        st.line_chart(df_selected.set_index("date")[["thetao", "so"]])
-
-    st.markdown("### 📊 Summary Statistics")
-    col4, col5, col6 = st.columns(3)
-    col4.metric("Max CHL", f"{df_selected['predicted_chl'].max():.2f}")
-    col5.metric("Min CHL", f"{df_selected['predicted_chl'].min():.2f}")
-    col6.metric("Bloom Days", int(df_selected["bloom_risk_flag"].sum()))
-```
 
 
 
