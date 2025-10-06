@@ -16,13 +16,14 @@ REGIONS = {
 # === Load forecast data for each region ===
 
 def load_forecast(region):
-path = f"forecast_log_{thermaikos}.csv"
-if os.path.exists(path):
-df = pd.read_csv(path, parse_dates=["date"])
-df = df.sort_values("date")
-return df
-else:
-return None
+    path = f"forecast_log_{region}.csv"
+    if os.path.exists(path):
+        df = pd.read_csv(path, parse_dates=["date"])
+        df = df.sort_values("date")
+        return df
+    else:
+        return None
+
 
 # === Page layout ===
 
@@ -107,5 +108,6 @@ if df_selected is not None and not df_selected.empty:
     col5.metric("Min CHL", f"{df_selected['predicted_chl'].min():.2f}")
     col6.metric("Bloom Days", int(df_selected["bloom_risk_flag"].sum()))
 ```
+
 
 
