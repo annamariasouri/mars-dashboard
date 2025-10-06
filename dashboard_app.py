@@ -101,7 +101,7 @@ if st_data and st_data.get("last_object_clicked_tooltip"):
         col5.metric("Min CHL", f"{df_selected['predicted_chl'].min():.2f}")
         col6.metric("Bloom Days", int(df_selected["bloom_risk_flag"].sum()))
 
-```
+
 
 
 
