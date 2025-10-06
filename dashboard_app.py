@@ -48,8 +48,6 @@ with st.sidebar:
     Click on a region marker on the map to view its forecasts and metrics.
     """)
 
-```
-
 # === Interactive Map ===
 
 m = folium.Map(location=[38.0, 24.0], zoom_start=6, tiles="CartoDB positron")
@@ -104,6 +102,7 @@ if df_selected is not None and not df_selected.empty:
     col5.metric("Min CHL", f"{df_selected['predicted_chl'].min():.2f}")
     col6.metric("Bloom Days", int(df_selected["bloom_risk_flag"].sum()))
 ```
+
 
 
 
