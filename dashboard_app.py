@@ -30,9 +30,15 @@ st.caption("Copernicus-powered forecasting across the Eastern Mediterranean")
 # === CHL / Red Tide Explanation ===
 with st.expander("ℹ️ What is CHL and Why It Matters?", expanded=True):
     st.markdown("""
-    **Chlorophyll-a (CHL)** is a proxy for phytoplankton levels in the ocean.  
-    When CHL is abnormally high, it can signal **algal blooms**, including harmful red tides.
+**Chlorophyll-a (CHL)** is a proxy for phytoplankton levels in the ocean.  
+When CHL is abnormally high, it can signal **algal blooms**, including harmful red tides.
 
-    Red tide events can:
-    - Release toxins harmful to marine life and humans
-    - Deplete oxygen and
+Red tide events can:
+- Release toxins harmful to marine life and humans
+- Deplete oxygen and lead to fish kills
+- Disrupt fisheries, aquaculture, and coastal tourism
+
+The MARS system monitors daily CHL values to flag potential bloom risk using data from Copernicus Marine Service.
+    """)
+
+
