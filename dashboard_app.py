@@ -51,19 +51,19 @@ with st.sidebar:
 # === Interactive Map ===
 
 m = folium.Map(location=[38.0, 24.0], zoom_start=6, tiles="CartoDB positron")
-
 for region, info in REGIONS.items():
-df = load_forecast(region)
-if df is not None and not df.empty:
-latest = df.iloc[-1]
-risk = latest["bloom_risk_flag"]
-color = "red" if risk else "green"
-folium.Marker(
-location=[info["lat"], info["lon"]],
-popup=f"{info['name']} — CHL: {latest['predicted_chl']:.2f} mg/m³",
-tooltip=info["name"],
-icon=folium.Icon(color=color)
-).add_to(m)
+    df = load_forecast(region)
+    if df is not None and not df.empty:
+        latest = df.iloc[-1]
+        risk = latest["bloom_risk_flag"]
+        color = "red" if risk else "green"
+        folium.Marker(
+            location=[info["lat"], info["lon"]],
+            popup=f"{info['name']} — CHL: {latest['predicted_chl']:.2f} mg/m³",
+            tooltip=info["name"],
+            icon=folium.Icon(color=color)
+        ).add_to(m)
+
 
 st.markdown("### 📍 Select a location to view detailed risk information")
 st_data = st_folium(m, width=1200, height=700)
@@ -102,6 +102,7 @@ if df_selected is not None and not df_selected.empty:
     col5.metric("Min CHL", f"{df_selected['predicted_chl'].min():.2f}")
     col6.metric("Bloom Days", int(df_selected["bloom_risk_flag"].sum()))
 ```
+
 
 
 
