@@ -32,9 +32,8 @@ ENV_VARS = [
 
 # === SIDEBAR ===
 with st.sidebar:
-    st.image("https://www.copernicus.eu/sites/default/files/inline-images/Logo_Copernicus_MarineService_RGB.png", width=160)
     st.markdown("### 🌊 MARS – Marine Autonomous Risk System")
-    st.write("**Annamaria Souri**, PhD Research • Powered by **Copernicus Marine**")
+    st.write("Part of **Annamaria Souri**’s PhD research • Powered by **Copernicus Marine**")
 
 # ✅ Use current working directory for data files
 data_dir = "."
@@ -43,21 +42,43 @@ st.title("🌊 MARS Dashboard – Real-Time Bloom Forecasts")
 
 # === HELPERS ===
 
+def _list_files():
+    try:
+        return sorted(os.listdir(data_dir))
+    except Exception:
+        return []
+
+
 def latest_env_file(region: str):
-    files = [f for f in os.listdir(data_dir) if re.match(rf"env_history_{region}_.+\\.csv$", f)]
+    # Accept both hyphen and underscore dates, any suffix
+    files = [f for f in _list_files() if re.match(rf"env_history_{region}_.+\.csv$", f, flags=re.IGNORECASE)]
     return os.path.join(data_dir, sorted(files)[-1]) if files else None
 
 
 def load_forecast(region: str) -> pd.DataFrame:
-    path = os.path.join(data_dir, f"forecast_log_{region}.csv")
-    if os.path.exists(path):
-        df = pd.read_csv(path)
-        # normalize column names
-        df.columns = [c.strip().lower() for c in df.columns]
-        # coerce date column to datetime if present
-        if "date" in df.columns:
-            df["date"] = pd.to_datetime(df["date"], errors="coerce")
-        return df
+    # Support different casings
+    candidates = [f"forecast_log_{region}.csv", f"forecast_{region}.csv"]
+    for name in candidates:
+        path = os.path.join(data_dir, name)
+        if os.path.exists(path):
+            df = pd.read_csv(path)
+            df.columns = [c.strip().lower() for c in df.columns]
+            # Parse date
+            for c in ["date", "day", "ds", "timestamp"]:
+                if c in df.columns:
+                    df["date"] = pd.to_datetime(df[c], errors="coerce")
+                    break
+            # Normalize flag/threshold names
+            rename = {
+                "bloom_flag": "bloom_risk_flag",
+                "risk_flag": "bloom_risk_flag",
+                "chl_pred": "predicted_chl",
+                "threshold": "threshold_used",
+            }
+            for k, v in rename.items():
+                if k in df.columns and v not in df.columns:
+                    df = df.rename(columns={k: v})
+            return df.sort_values("date")
     return pd.DataFrame()
 
 
@@ -66,13 +87,13 @@ def load_env(region: str) -> pd.DataFrame:
     if not f:
         return pd.DataFrame()
     df = pd.read_csv(f)
-    # normalize columns to UPPER for easier matching
-    df.columns = [c.strip().upper() for c in df.columns]
-    # common aliases
-    rename_map = {"DATETIME": "TIME", "DATE": "TIME"}
-    for k, v in rename_map.items():
-        if k in df.columns and v not in df.columns:
-            df = df.rename(columns={k: v})
+    # normalize columns
+    cols_upper = {c: c.upper() for c in df.columns}
+    df = df.rename(columns=cols_upper)
+    # allow TIME aliases
+    for alias in ["DATETIME", "DATE", "TS"]:
+        if alias in df.columns and "TIME" not in df.columns:
+            df = df.rename(columns={alias: "TIME"})
     return df
 
 
@@ -82,6 +103,71 @@ def plot_ts(df: pd.DataFrame, x: str, y: str, title: str, ylab: str):
     fig.update_yaxes(title=ylab)
     return fig
 
+
+def summarize_region(forecast: pd.DataFrame) -> dict:
+    """Return latest metrics + derived 7/30 day likelihoods and risk-day counts.
+    If recurrence columns exist, use them; otherwise compute from predicted_chl vs threshold_used.
+    """
+    out = {
+        "latest_chl": None,
+        "bloom_flag": None,
+        "threshold": None,
+        "rec7": None,
+        "rec30": None,
+        "risk7": None,
+        "risk30": None,
+    }
+    if forecast.empty:
+        return out
+
+    last = forecast.dropna(subset=["date"]).iloc[-1] if "date" in forecast.columns else forecast.iloc[-1]
+
+    # Latest values
+    out["latest_chl"] = last.get("predicted_chl")
+    out["threshold"] = last.get("threshold_used")
+    bf = last.get("bloom_risk_flag")
+    if pd.isna(bf):
+        out["bloom_flag"] = None
+    else:
+        out["bloom_flag"] = str(bf).lower() in ("1", "true", "yes")
+
+    # Compute risk flags series
+    if "bloom_risk_flag" in forecast.columns:
+        flags = forecast["bloom_risk_flag"].astype(str).str.lower().isin(["1", "true", "yes"])
+    elif {"predicted_chl", "threshold_used"}.issubset(forecast.columns):
+        flags = forecast["predicted_chl"] >= forecast["threshold_used"]
+    else:
+        flags = pd.Series([False] * len(forecast), index=forecast.index)
+
+    # Windows
+    if "date" in forecast.columns:
+        fc = forecast.dropna(subset=["date"]).copy()
+        fc["date"] = pd.to_datetime(fc["date"], errors="coerce")
+        fc = fc.dropna(subset=["date"]).reset_index(drop=True)
+        end = fc["date"].max()
+        w7 = fc[fc["date"] >= end - timedelta(days=7)].index
+        w30 = fc[fc["date"] >= end - timedelta(days=30)].index
+        # counts
+        out["risk7"] = int(flags.loc[w7].sum()) if len(w7) else 0
+        out["risk30"] = int(flags.loc[w30].sum()) if len(w30) else 0
+        # recurrence probabilities
+        if "recurrence_7d_prob" in forecast.columns and pd.notna(last.get("recurrence_7d_prob")):
+            out["rec7"] = float(last.get("recurrence_7d_prob"))
+        else:
+            out["rec7"] = round(flags.loc[w7].mean() * 100, 1) if len(w7) else None
+        if "recurrence_30d_prob" in forecast.columns and pd.notna(last.get("recurrence_30d_prob")):
+            out["rec30"] = float(last.get("recurrence_30d_prob"))
+        else:
+            out["rec30"] = round(flags.loc[w30].mean() * 100, 1) if len(w30) else None
+    else:
+        # fallback when no dates exist
+        out["risk7"] = int(flags.tail(7).sum())
+        out["risk30"] = int(flags.tail(30).sum())
+        out["rec7"] = round(flags.tail(7).mean() * 100, 1)
+        out["rec30"] = round(flags.tail(30).mean() * 100, 1)
+
+    return out
+
 # === MAP ===
 all_lat, all_lon = [], []
 for v in REGIONS.values():
@@ -90,11 +176,10 @@ for v in REGIONS.values():
     all_lon += [lon_min, lon_max]
 center = [float(np.mean(all_lat)), float(np.mean(all_lon))]
 
-# Default region that actually has a forecast file (fallback to thermaikos)
+# Choose default region that actually has data
 available = [r for r in REGIONS if os.path.exists(os.path.join(data_dir, f"forecast_log_{r}.csv"))]
-default_region = available[0] if available else "thermaikos"
 if "region" not in st.session_state:
-    st.session_state.region = default_region
+    st.session_state.region = available[0] if available else "thermaikos"
 
 colmap = st.columns([3, 1])
 with colmap[0]:
@@ -125,54 +210,38 @@ region = st.session_state.region
 forecast = load_forecast(region)
 env = load_env(region)
 region_title = REGIONS[region]["title"]
+summary = summarize_region(forecast)
 
 # === KPI CARDS ===
-latest = forecast.tail(1)
-if not latest.empty:
-    row = latest.iloc[0]
-    kpi = st.columns(8)
-    # Access with lower-case because we normalized forecast columns
-    pred_chl = row.get("predicted_chl")
-    thr = row.get("threshold_used")
-    bloom_flag = row.get("bloom_risk_flag")
-    rec7 = row.get("recurrence_7d_prob")
-    rec30 = row.get("recurrence_30d_prob")
+kpi = st.columns(6)
 
-    kpi[0].metric(f"{region_title} – CHL", f"{pred_chl:.3f} mg/m³" if pd.notna(pred_chl) else "—")
-    kpi[1].metric("Bloom Flag (Today)", "Yes" if str(bloom_flag).lower() in ("1", "true", "yes") else "No")
-    kpi[2].metric("Threshold Used", f"{thr:.3f}" if pd.notna(thr) else "—")
-    if pd.notna(rec7):
-        kpi[3].metric("Likelihood (Next 7 d)", f"{rec7} %")
-    if pd.notna(rec30):
-        kpi[4].metric("Likelihood (Next 30 d)", f"{rec30} %")
-else:
-    st.warning("No forecast data found for this region yet.")
+kpi[0].metric(f"{region_title} – CHL", f"{summary['latest_chl']:.3f} mg/m³" if pd.notna(summary['latest_chl']) else "—")
+kpi[1].metric("Bloom Flag (Today)", "Yes" if summary['bloom_flag'] else ("No" if summary['bloom_flag'] is not None else "—"))
+kpi[2].metric("Threshold Used", f"{summary['threshold']:.3f}" if pd.notna(summary['threshold']) else "—")
+kpi[3].metric("Likelihood (Next 7 d)", f"{summary['rec7']} %" if summary['rec7'] is not None else "—")
+kpi[4].metric("Likelihood (Next 30 d)", f"{summary['rec30']} %" if summary['rec30'] is not None else "—")
+kpi[5].metric("Risk Days (7/30)", f"{summary['risk7'] or 0}/{summary['risk30'] or 0}")
 
 # === TABS ===
 tab1, tab2, tab3 = st.tabs(["Today’s Forecast", "Environmental Trends", "About MARS"])
 
 with tab1:
     st.subheader(f"{region_title} – CHL Forecasts")
-    if env.empty:
-        st.info("No environmental history available yet.")
-    else:
-        # Expect a 'TIME' column and 'CHL' in env (columns set to UPPER in load_env)
-        if "TIME" in env.columns:
-            env["TIME"] = pd.to_datetime(env["TIME"], errors="coerce")
-            env = env.dropna(subset=["TIME"])  # keep valid timestamps
-            now = env["TIME"].max()
-            last7 = env[env["TIME"] >= now - timedelta(days=7)]
-            last30 = env[env["TIME"] >= now - timedelta(days=30)]
-            c1, c2 = st.columns(2)
-            if "CHL" in env.columns:
-                with c1:
-                    st.plotly_chart(plot_ts(last7, "TIME", "CHL", "CHL – Last 7 days", "mg/m³"), use_container_width=True)
-                with c2:
-                    st.plotly_chart(plot_ts(last30, "TIME", "CHL", "CHL – Last 30 days", "mg/m³"), use_container_width=True)
-        else:
-            st.info("Couldn't locate a TIME column in env history.")
-
-    if not forecast.empty and "date" in forecast.columns:
+    # CHL series from env if available; else predicted CHL from forecast
+    if not env.empty and "TIME" in env.columns and "CHL" in env.columns:
+        env = env.copy()
+        env["TIME"] = pd.to_datetime(env["TIME"], errors="coerce")
+        env = env.dropna(subset=["TIME"])  # keep valid timestamps
+        now = env["TIME"].max()
+        last7 = env[env["TIME"] >= now - timedelta(days=7)]
+        last30 = env[env["TIME"] >= now - timedelta(days=30)]
+        c1, c2 = st.columns(2)
+        with c1:
+            st.plotly_chart(plot_ts(last7, "TIME", "CHL", "CHL – Last 7 days", "mg/m³"), use_container_width=True)
+        with c2:
+            st.plotly_chart(plot_ts(last30, "TIME", "CHL", "CHL – Last 30 days", "mg/m³"), use_container_width=True)
+    elif not forecast.empty and {"date", "predicted_chl"}.issubset(forecast.columns):
+        st.info("Using predicted CHL from forecast history (env history not found).")
         st.plotly_chart(
             px.line(
                 forecast.tail(30), x="date", y="predicted_chl",
@@ -182,21 +251,24 @@ with tab1:
             ),
             use_container_width=True,
         )
+    else:
+        st.info("No environmental or forecast CHL series available yet.")
 
 with tab2:
     st.subheader(f"{region_title} – Environmental Trends (30 days)")
-    if env.empty:
-        st.info("No env_history file found for this region yet.")
+    if env.empty or "TIME" not in env.columns:
+        st.info("No env_history file with a TIME column found for this region yet.")
     else:
-        if "TIME" in env.columns:
-            env["TIME"] = pd.to_datetime(env["TIME"], errors="coerce")
-            variables = [v for v, _ in ENV_VARS if v in env.columns]
+        env = env.copy()
+        env["TIME"] = pd.to_datetime(env["TIME"], errors="coerce")
+        variables = [v for v, _ in ENV_VARS if v in env.columns]
+        if not variables:
+            st.info("No known environmental variables present.")
+        else:
             chosen = st.multiselect("Variables to plot", variables, default=variables[:2])
             for v in chosen:
                 label = dict(ENV_VARS).get(v, v)
                 st.plotly_chart(plot_ts(env, "TIME", v, label, label), use_container_width=True)
-        else:
-            st.info("Couldn't locate a TIME column in env history.")
 
 with tab3:
     st.markdown(
@@ -206,11 +278,18 @@ with tab3:
 
         **Regions:** Thermaikos (GR), Piraeus (GR), Limassol (CY)  
         **Data:** NH₄, NO₃, PO₄, θ (temperature), SO (salinity), CHL  
-        **Metrics shown:** Bloom flag, thresholds, risk probabilities, recurrence likelihoods  
+        **Metrics shown:** Bloom flag, thresholds, risk probabilities, and 7/30-day recurrence likelihoods.  
 
         *Part of Annamaria Souri’s PhD Research – University of Nicosia*
         """
     )
+
+# --- Optional diagnostics (collapsed) ---
+with st.expander("🔍 Diagnostics (what the app finds)"):
+    st.write("Working directory:", os.getcwd())
+    st.write("Files:", _list_files())
+    st.write("Forecast columns:", list(forecast.columns))
+    st.write("Env columns:", list(env.columns))
 
 st.markdown(
     f"<hr style='margin-top:2em;border:0;height:1px;background:{COPERNICUS_BLUE};opacity:0.3;'>"
