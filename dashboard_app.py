@@ -115,10 +115,14 @@ def load_env(region):
     return df
 
 def likelihood_badge(p):
-    if p is None: return "<span class='badge'>—</span>"
-    if p <= 20: return f\"<span class='badge low'>{p:.0f}% • Low</span>\"
-    elif p <= 60: return f\"<span class='badge med'>{p:.0f}% • Moderate</span>\"
-    return f\"<span class='badge high'>{p:.0f}% • High</span>\"
+    if p is None:
+        return "<span class='badge'>—</span>"
+    if p <= 20:
+        return f"<span class='badge low'>{p:.0f}% • Low</span>"
+    elif p <= 60:
+        return f"<span class='badge med'>{p:.0f}% • Moderate</span>"
+    return f"<span class='badge high'>{p:.0f}% • High</span>"
+
 
 # === Map ===
 region = st.session_state.get("region","thermaikos")
@@ -175,3 +179,4 @@ else:
 # === Footer ===
 st.markdown(f\"\"\"<hr style='border:0;height:2px;background:linear-gradient(90deg,{PRIMARY_GRAD_1},{PRIMARY_GRAD_2});opacity:.7;'>
 <div style='text-align:center;color:#A9D6E5;font-size:12px;'>© {datetime.now().year} MARS • Marine Autonomous Risk System</div>\"\"\",unsafe_allow_html=True)
+
