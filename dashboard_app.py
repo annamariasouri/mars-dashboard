@@ -255,11 +255,15 @@ with k2:
       <div class='value'>{'Yes' if summary['bloom_flag'] else ('No' if summary['bloom_flag'] is not None else '—')}</div>
     </div>""", unsafe_allow_html=True)
 with k3:
-    st.markdown(f"""
+ st.markdown(f"""
     <div class='kpi'>
       <div class='label'>Threshold Used</div>
-      <div class='value'>{summary['threshold']:.3f if summary['threshold'] is not None else float('nan')}</div>
-    </div>""", unsafe_allow_html=True)
+      <div class='value'>
+        {f"{summary['threshold']:.3f}" if isinstance(summary['threshold'], (int, float)) and not pd.isna(summary['threshold']) else "—"}
+      </div>
+    </div>
+""", unsafe_allow_html=True)
+
 
 k4, k5, k6 = st.columns([3,3,2])
 with k4:
@@ -331,3 +335,4 @@ st.markdown(
     f"<div style='text-align:center;color:{MUTED};font-size:12px;'>© {datetime.now().year} MARS • Research prototype</div>",
     unsafe_allow_html=True,
 )
+
