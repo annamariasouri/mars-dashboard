@@ -38,8 +38,6 @@ with st.sidebar:
 
 # ✅ Use current working directory for data files
 data_dir = "."
-# Uncomment for quick debugging of what files the app sees:
-# st.write("📂 Files in working directory:", os.listdir(data_dir))
 
 st.title("🌊 MARS Dashboard – Real-Time Bloom Forecasts")
 
@@ -56,6 +54,9 @@ def load_forecast(region: str) -> pd.DataFrame:
         df = pd.read_csv(path)
         # normalize column names
         df.columns = [c.strip().lower() for c in df.columns]
+        # coerce date column to datetime if present
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
         return df
     return pd.DataFrame()
 
@@ -67,6 +68,11 @@ def load_env(region: str) -> pd.DataFrame:
     df = pd.read_csv(f)
     # normalize columns to UPPER for easier matching
     df.columns = [c.strip().upper() for c in df.columns]
+    # common aliases
+    rename_map = {"DATETIME": "TIME", "DATE": "TIME"}
+    for k, v in rename_map.items():
+        if k in df.columns and v not in df.columns:
+            df = df.rename(columns={k: v})
     return df
 
 
@@ -84,8 +90,11 @@ for v in REGIONS.values():
     all_lon += [lon_min, lon_max]
 center = [float(np.mean(all_lat)), float(np.mean(all_lon))]
 
+# Default region that actually has a forecast file (fallback to thermaikos)
+available = [r for r in REGIONS if os.path.exists(os.path.join(data_dir, f"forecast_log_{r}.csv"))]
+default_region = available[0] if available else "thermaikos"
 if "region" not in st.session_state:
-    st.session_state.region = "thermaikos"
+    st.session_state.region = default_region
 
 colmap = st.columns([3, 1])
 with colmap[0]:
@@ -130,7 +139,7 @@ if not latest.empty:
     rec30 = row.get("recurrence_30d_prob")
 
     kpi[0].metric(f"{region_title} – CHL", f"{pred_chl:.3f} mg/m³" if pd.notna(pred_chl) else "—")
-    kpi[1].metric("Bloom Flag (Today)", "Yes" if str(bloom_flag) in ("1", "true", "True") else "No")
+    kpi[1].metric("Bloom Flag (Today)", "Yes" if str(bloom_flag).lower() in ("1", "true", "yes") else "No")
     kpi[2].metric("Threshold Used", f"{thr:.3f}" if pd.notna(thr) else "—")
     if pd.notna(rec7):
         kpi[3].metric("Likelihood (Next 7 d)", f"{rec7} %")
