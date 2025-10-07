@@ -35,7 +35,8 @@ with st.sidebar:
     st.image("https://www.copernicus.eu/sites/default/files/inline-images/Logo_Copernicus_MarineService_RGB.png", width=160)
     st.markdown("### 🌊 MARS – Marine Autonomous Risk System")
     st.write("**Annamaria Souri**, PhD Research • Powered by **Copernicus Marine**")
-    data_dir = st.text_input("Data directory", ".", help="Folder containing forecast_log_*.csv and env_history_*.csv")
+  data_dir = "."
+
 
 st.title("🌊 MARS Dashboard – Real-Time Bloom Forecasts")
 
@@ -161,3 +162,4 @@ with tab3:
 st.markdown(f"<hr style='margin-top:2em;border:0;height:1px;background:{COPERNICUS_BLUE};opacity:0.3;'>"
             f"<div style='text-align:center;color:#999;font-size:12px;'>© {datetime.now().year} MARS • Research prototype</div>",
             unsafe_allow_html=True)
+
