@@ -42,6 +42,7 @@ body {{
   border-radius: 16px;
   padding: 14px 18px;
   box-shadow: inset 0 0 12px rgba(255,255,255,.05);
+  text-align: center;
 }}
 .kpi .label {{ color: #A9D6E5; font-size: 13px; letter-spacing: .3px; }}
 .kpi .value {{ font-size: 24px; font-weight: 700; color: #FFFFFF; }}
@@ -84,7 +85,11 @@ REGIONS = {
 }
 
 # === Helper functions ===
-def _list_files(): return sorted(os.listdir(data_dir))
+def _list_files():
+    try:
+        return sorted(os.listdir(data_dir))
+    except Exception:
+        return []
 
 def latest_env_file(region):
     files = [f for f in _list_files() if re.match(rf"env_history_{region}_.+\\.csv$", f, flags=re.IGNORECASE)]
@@ -103,14 +108,16 @@ def load_forecast(region):
 
 def load_env(region):
     f = latest_env_file(region)
-    if not f: return pd.DataFrame()
+    if not f:
+        return pd.DataFrame()
     df = pd.read_csv(f)
     df.columns = [c.strip().upper() for c in df.columns]
     # auto-fix lowercase or DATE columns
     if "TIME" not in df.columns:
-        for alias in ["time","date","datetime","ts"]:
+        for alias in ["time", "date", "datetime", "ts"]:
             if alias.upper() in df.columns or alias in df.columns:
-                df = df.rename(columns={alias.upper(): "TIME"} if alias.upper() in df.columns else {alias: "TIME"})
+                rename_from = alias.upper() if alias.upper() in df.columns else alias
+                df = df.rename(columns={rename_from: "TIME"})
                 break
     return df
 
@@ -123,60 +130,112 @@ def likelihood_badge(p):
         return f"<span class='badge med'>{p:.0f}% • Moderate</span>"
     return f"<span class='badge high'>{p:.0f}% • High</span>"
 
-
 # === Map ===
-region = st.session_state.get("region","thermaikos")
-lat_center = np.mean([REGIONS[r]["bbox"][0]+REGIONS[r]["bbox"][1] for r in REGIONS])/2
-lon_center = np.mean([REGIONS[r]["bbox"][2]+REGIONS[r]["bbox"][3] for r in REGIONS])/2
+region = st.session_state.get("region", "thermaikos")
+lat_center = np.mean([REGIONS[r]["bbox"][0] + REGIONS[r]["bbox"][1] for r in REGIONS]) / 2
+lon_center = np.mean([REGIONS[r]["bbox"][2] + REGIONS[r]["bbox"][3] for r in REGIONS]) / 2
 
 m = folium.Map(location=[lat_center, lon_center], zoom_start=6, tiles="cartodbpositron")
-for key,val in REGIONS.items():
-    lat_min,lat_max,lon_min,lon_max = val["bbox"]
-    folium.Rectangle(bounds=[[lat_min,lon_min],[lat_max,lon_max]],color=val["color"],fill=True,
-                     fill_opacity=0.4,popup=val["title"]).add_to(m)
+for key, val in REGIONS.items():
+    lat_min, lat_max, lon_min, lon_max = val["bbox"]
+    folium.Rectangle(
+        bounds=[[lat_min, lon_min], [lat_max, lon_max]],
+        color=val["color"], fill=True,
+        fill_opacity=0.4, popup=val["title"]
+    ).add_to(m)
 
-st.markdown("<br>",unsafe_allow_html=True)
-st.markdown("<div style='text-align:center;color:#A9D6E5;font-weight:600;'>📍 Click a region below</div>",unsafe_allow_html=True)
-click = st_folium(m,height=600,width=1400,key="mars_map")  # Bigger map
+st.markdown("<br>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center;color:#A9D6E5;font-weight:600;'>📍 Click a region below</div>", unsafe_allow_html=True)
+click = st_folium(m, height=600, width=1400, key="mars_map")  # Bigger map
 
 if click and click.get("last_clicked"):
-    lat,lon = click["last_clicked"]["lat"],click["last_clicked"]["lng"]
-    for k,v in REGIONS.items():
-        lat_min,lat_max,lon_min,lon_max=v["bbox"]
-        if lat_min<=lat<=lat_max and lon_min<=lon<=lon_max:
-            region=k
-st.session_state.region=region
-region_title=REGIONS[region]["title"]
+    lat, lon = click["last_clicked"]["lat"], click["last_clicked"]["lng"]
+    for k, v in REGIONS.items():
+        lat_min, lat_max, lon_min, lon_max = v["bbox"]
+        if lat_min <= lat <= lat_max and lon_min <= lon <= lon_max:
+            region = k
+st.session_state.region = region
+region_title = REGIONS[region]["title"]
 
 # === Data load ===
 forecast, env = load_forecast(region), load_env(region)
 
-# === KPIs ===
+# === KPI Section ===
 st.markdown(f"<h3 style='color:#A9D6E5;margin-top:1em;'>{region_title}</h3>", unsafe_allow_html=True)
-cols=st.columns(3)
+cols = st.columns(3)
+
 with cols[0]:
-    val=forecast["predicted_chl"].iloc[-1] if not forecast.empty else None
-    st.markdown(f\"<div class='kpi'><div class='label'>Predicted CHL</div><div class='value'>{val:.3f if val else '—'} mg/m³</div></div>\",unsafe_allow_html=True)
+    val = forecast["predicted_chl"].iloc[-1] if not forecast.empty else None
+    val_display = f"{val:.3f}" if isinstance(val, (int, float)) and not pd.isna(val) else "—"
+    st.markdown(
+        f"""
+        <div class='kpi'>
+          <div class='label'>Predicted CHL</div>
+          <div class='value'>{val_display} mg/m³</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 with cols[1]:
-    thresh=forecast["threshold_used"].iloc[-1] if "threshold_used" in forecast else None
-    st.markdown(f\"<div class='kpi'><div class='label'>Threshold</div><div class='value'>{thresh:.3f if thresh else '—'}</div></div>\",unsafe_allow_html=True)
+    thresh = forecast["threshold_used"].iloc[-1] if "threshold_used" in forecast else None
+    thresh_display = f"{thresh:.3f}" if isinstance(thresh, (int, float)) and not pd.isna(thresh) else "—"
+    st.markdown(
+        f"""
+        <div class='kpi'>
+          <div class='label'>Threshold</div>
+          <div class='value'>{thresh_display}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 with cols[2]:
-    risk_flag=forecast["bloom_risk_flag"].iloc[-1] if "bloom_risk_flag" in forecast else None
-    st.markdown(f\"<div class='kpi'><div class='label'>Bloom Today</div><div class='value'>{'Yes' if risk_flag==1 else 'No' if risk_flag==0 else '—'}</div></div>\",unsafe_allow_html=True)
+    risk_flag = forecast["bloom_risk_flag"].iloc[-1] if "bloom_risk_flag" in forecast else None
+    risk_label = "Yes" if str(risk_flag).lower() in ("1", "true", "yes") else ("No" if risk_flag is not None else "—")
+    st.markdown(
+        f"""
+        <div class='kpi'>
+          <div class='label'>Bloom Today</div>
+          <div class='value'>{risk_label}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 # === Charts ===
 st.markdown("<br>", unsafe_allow_html=True)
 if not env.empty and "TIME" in env.columns and "CHL" in env.columns:
-    env["TIME"]=pd.to_datetime(env["TIME"],errors="coerce")
-    st.plotly_chart(px.line(env,x="TIME",y="CHL",title="CHL – 30-Day Environmental History",
-                            color_discrete_sequence=[PRIMARY_GRAD_2],template=PLOTLY_TEMPLATE),use_container_width=True)
+    env["TIME"] = pd.to_datetime(env["TIME"], errors="coerce")
+    st.plotly_chart(
+        px.line(
+            env, x="TIME", y="CHL",
+            title="CHL – 30-Day Environmental History",
+            color_discrete_sequence=[PRIMARY_GRAD_2],
+            template=PLOTLY_TEMPLATE
+        ),
+        use_container_width=True
+    )
 elif not forecast.empty:
-    st.plotly_chart(px.scatter(forecast,x="date",y="predicted_chl",title="Predicted CHL (forecast log)",
-                               color_discrete_sequence=[PRIMARY_GRAD_1],template=PLOTLY_TEMPLATE),use_container_width=True)
+    st.plotly_chart(
+        px.scatter(
+            forecast, x="date", y="predicted_chl",
+            title="Predicted CHL (forecast log)",
+            color_discrete_sequence=[PRIMARY_GRAD_1],
+            template=PLOTLY_TEMPLATE
+        ),
+        use_container_width=True
+    )
 else:
     st.info("No environmental or forecast data found for this region yet.")
 
 # === Footer ===
-st.markdown(f\"\"\"<hr style='border:0;height:2px;background:linear-gradient(90deg,{PRIMARY_GRAD_1},{PRIMARY_GRAD_2});opacity:.7;'>
-<div style='text-align:center;color:#A9D6E5;font-size:12px;'>© {datetime.now().year} MARS • Marine Autonomous Risk System</div>\"\"\",unsafe_allow_html=True)
-
+st.markdown(
+    f"""
+    <hr style='border:0;height:2px;background:linear-gradient(90deg,{PRIMARY_GRAD_1},{PRIMARY_GRAD_2});opacity:.7;'>
+    <div style='text-align:center;color:#A9D6E5;font-size:12px;'>
+      © {datetime.now().year} MARS • Marine Autonomous Risk System
+    </div>
+    """,
+    unsafe_allow_html=True
+)
