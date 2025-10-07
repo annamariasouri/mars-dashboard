@@ -213,12 +213,19 @@ def summarize_region(forecast: pd.DataFrame) -> dict:
         out["rec7"], out["rec30"] = round(flags.tail(7).mean()*100,1), round(flags.tail(30).mean()*100,1)
     return out
 
+
 # === MAP ===
 all_lat, all_lon = [], []
 for v in REGIONS.values():
     lat_min, lat_max, lon_min, lon_max = v["bbox"]
-    all_lat += [lat_min, lat_max]; all_lon += [lon_min, lon_max]
-center = [float(np.mean(all_lat)), float(np.mean(all_lons))] if (all_lat and all_lons := all_lon) else [37.5, 23.5]
+    all_lat.extend([lat_min, lat_max])
+    all_lon.extend([lon_min, lon_max])
+
+if all_lat and all_lon:
+    center = [float(np.mean(all_lat)), float(np.mean(all_lon))]
+else:
+    center = [37.5, 23.5]
+
 
 available = [r for r in REGIONS if os.path.exists(os.path.join(data_dir, f"forecast_log_{r}.csv"))]
 if "region" not in st.session_state:
@@ -372,3 +379,4 @@ st.markdown(
     f"<div style='text-align:center;color:{MUTED};font-size:12px;'>© {datetime.now().year} MARS • Research prototype</div>",
     unsafe_allow_html=True,
 )
+
