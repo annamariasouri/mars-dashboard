@@ -1,4 +1,5 @@
-import os, re
+import os
+import re
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -10,345 +11,364 @@ from streamlit_folium import st_folium
 # === CONFIG ===
 st.set_page_config(page_title="MARS – Marine Autonomous Risk System", page_icon="🌊", layout="wide")
 
-# --- Colors / Theme ---
-PRIMARY_DARK = "#021F3B"
-PRIMARY_GRAD_1 = "#004E89"
-PRIMARY_GRAD_2 = "#00A6FB"
-ACCENT = "#34D1BF"
+# Proactively clear any cached data to avoid stale reads per region switch
+try:
+    st.cache_data.clear()
+except Exception:
+    pass
+
+# --- Marine Observatory theme ---
+PRIMARY_DARK = "#062B4F"      # deep ocean
+PRIMARY = "#0B4F6C"           # marine blue
+PRIMARY_GRAD_1 = "#0072BC"    # Copernicus blue
+PRIMARY_GRAD_2 = "#00B4D8"    # aqua
+ACCENT = "#34D1BF"            # teal accent
 AMBER = "#FFB703"
-RED = "#E63946"
+RED = "#D00000"
 GREEN = "#2A9D8F"
-MUTED = "#AAB4BF"
+MUTED = "#6B7A90"
 PLOTLY_TEMPLATE = "plotly_white"
 
-# === Global CSS ===
-st.markdown(f"""
-<style>
-/* ==== MARS Deep Ocean Theme ==== */
-body {{
-  background: linear-gradient(180deg, #00111f 0%, #001b33 40%, #001f3f 100%) fixed;
-  color: #E0F2FF;
-  font-family: 'Inter', sans-serif;
-}}
-.block-container {{
-  background: transparent !important;
-  padding-top: 0rem !important;
-}}
-.marine-hero {{
-  background: linear-gradient(90deg, {PRIMARY_GRAD_1}, {PRIMARY_GRAD_2});
-  color: white; border-radius: 22px;
-  padding: 26px 30px; box-shadow: 0 10px 30px rgba(0,0,0,.6);
-}}
-.kpi {{
-  background: #FFFFFF; /* White cards */
-  border-radius: 18px;
-  padding: 16px 20px;
-  box-shadow: 0 8px 25px rgba(0,0,0,.4);
-  text-align: center;
-}}
-.kpi .label {{
-  color: #0B3954;       /* Deep marine blue text for labels */
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: .4px;
-}}
-.kpi .value {{
-  font-size: 26px;
-  font-weight: 800;
-  color: #000000;       /* Pure black text for values */
-}}
-.badge {{
-  display:inline-block;
-  padding:6px 12px;
-  border-radius:18px;
-  font-size:14px;
-  font-weight:700;
-  line-height:1.2;
-}}
-.badge.low  {{ background: rgba(42,157,143,.15);  color:#005f4b;  border:1px solid rgba(42,157,143,.35);  }}
-.badge.med  {{ background: rgba(255,183,3,.15);  color:#7c5700;  border:1px solid rgba(255,183,3,.40);  }}
-.badge.high {{ background: rgba(230,57,70,.15);  color:#750000;  border:1px solid rgba(230,57,70,.35);  }}
-.soft-card {{
-  background: rgba(255,255,255,.08);
-  border:1px solid rgba(255,255,255,.1);
-  border-radius:20px;
-  padding:18px;
-  box-shadow:0 8px 28px rgba(0,0,0,.5);
-}}
-/* === Map styling === */
-iframe, .folium-map {{
-  border-radius: 16px;
-  box-shadow: 0 0 40px rgba(0,0,0,0.7);
-}}
-</style>
-""", unsafe_allow_html=True)
-
-# === Sidebar ===
-with st.sidebar:
-    st.markdown("### 🌊 MARS – Marine Observatory Dashboard")
-    st.write("**Annamaria Souri**, PhD Research • Powered by Copernicus Marine")
-
-data_dir = "."
-
-# === Header ===
-st.markdown(f"""
-<div class="marine-hero">
-  <h2 style="margin:0;">🌊 MARS Dashboard</h2>
-  <p style="margin:4px 0 0;">Real-Time Bloom Forecasts for the Eastern Mediterranean</p>
-  <p style="margin:0;opacity:.9;">Updated daily</p>
-</div>
-""", unsafe_allow_html=True)
-
-# === Regions ===
 REGIONS = {
-    "thermaikos": {"title": "Thermaikos (Greece)", "bbox": (40.2, 40.7, 22.5, 23.0), "color": "#0077B6"},
-    "peiraeus":  {"title": "Piraeus (Greece)",   "bbox": (37.9, 38.1, 23.5, 23.8), "color": "#FF6B6B"},
-    "limassol":  {"title": "Limassol (Cyprus)",  "bbox": (34.6, 34.8, 33.0, 33.2), "color": "#00B894"},
+    "thermaikos": {"title": "Thermaikos (Greece)", "bbox": (40.2, 40.7, 22.5, 23.0), "color": "#2E86DE"},
+    "peiraeus": {"title": "Piraeus (Greece)", "bbox": (37.9, 38.1, 23.5, 23.8), "color": "#E17055"},
+    "limassol": {"title": "Limassol (Cyprus)", "bbox": (34.6, 34.8, 33.0, 33.2), "color": "#00B894"},
 }
 
-# === Helper functions ===
+ENV_VARS = [
+    ("CHL", "Chlorophyll-a (mg/m³)"),
+    ("NH4", "Ammonium NH₄ (µmol/L)"),
+    ("NO3", "Nitrate NO₃ (µmol/L)"),
+    ("PO4", "Phosphate PO₄ (µmol/L)"),
+    ("THETAO", "Temperature θ (°C)"),
+    ("SO", "Salinity (PSU)"),
+]
+
+# === THEME CSS ===
+st.markdown(
+    f"""
+    <style>
+      :root {{
+        --grad1: {PRIMARY_GRAD_1};
+        --grad2: {PRIMARY_GRAD_2};
+        --primary: {PRIMARY};
+        --dark: {PRIMARY_DARK};
+        --muted: {MUTED};
+        --green: {GREEN};
+        --amber: {AMBER};
+        --red: {RED};
+        --accent: {ACCENT};
+      }}
+      body {{ background: linear-gradient(180deg,#00111f 0%,#001b33 40%,#001f3f 100%) fixed; color:#E0F2FF; }}
+      .marine-hero {{
+        background: linear-gradient(90deg, var(--grad1), var(--grad2));
+        color: white;
+        padding: 18px 22px; border-radius: 16px; box-shadow: 0 10px 28px rgba(0,0,0,.25);
+        position: relative; overflow: hidden;
+      }}
+      .wave {{
+        position:absolute;bottom:-10px;left:-5%;right:-5%;height:80px;
+        background: radial-gradient(ellipse at bottom, rgba(255,255,255,.35), rgba(255,255,255,0));
+        filter: blur(14px);
+        animation: swell 6s ease-in-out infinite;
+      }}
+      @keyframes swell {{
+        0% {{ transform: translateY(0px); }}
+        50% {{ transform: translateY(6px); }}
+        100% {{ transform: translateY(0px); }}
+      }}
+      .kpi {{
+        background: #ffffff; border: 1px solid rgba(0,0,0,.06); border-radius: 14px;
+        padding: 14px 16px; box-shadow: 0 6px 20px rgba(13, 51, 89, .20);
+        text-align:center;
+      }}
+      .kpi .label {{ color: var(--muted); font-size: 13px; letter-spacing: .2px; font-weight:600; }}
+      .kpi .value {{ font-size: 26px; font-weight: 800; color: #000; }}
+      .badge {{ display:inline-block; padding:6px 12px; border-radius:999px; font-weight:700; font-size:14px;}}
+      .badge.low {{ background: rgba(42,157,143,.15); color:#005f4b; border:1px solid rgba(42,157,143,.35); }}
+      .badge.med {{ background: rgba(255,183,3,.15); color:#7c5700; border:1px solid rgba(255,183,3,.4); }}
+      .badge.high {{ background: rgba(208,0,0,.15); color:#750000; border:1px solid rgba(208,0,0,.35); }}
+      .section-title {{ color: #fff; font-weight:800; }}
+      .soft-card {{ background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,.25);}}
+      iframe, .folium-map {{ border-radius: 16px; box-shadow: 0 0 40px rgba(0,0,0,0.6); }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# === SIDEBAR ===
+with st.sidebar:
+    st.markdown("### 🌊 MARS – Marine Autonomous Risk System")
+    st.write("Part of **Annamaria Souri**’s PhD research • Powered by **Copernicus Marine**")
+
+# ✅ Data directory
+data_dir = "."
+
+# --- Hero Header ---
+st.markdown(
+    """
+    <div class="marine-hero">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div style="font-size:28px;">🛰️</div>
+        <div>
+          <div style="font-size:22px;font-weight:800;letter-spacing:.3px;">MARS Dashboard</div>
+          <div style="opacity:.9">Real‑Time Bloom Forecasts for the Eastern Mediterranean</div>
+        </div>
+        <div style="margin-left:auto;opacity:.9;">Updated daily</div>
+      </div>
+      <div class="wave"></div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# === HELPERS ===
+
 def _list_files():
     try:
         return sorted(os.listdir(data_dir))
     except Exception:
         return []
 
-def latest_env_file(region):
+
+def latest_env_file(region: str):
     files = [f for f in _list_files() if re.match(rf"env_history_{region}_.+\\.csv$", f, flags=re.IGNORECASE)]
     return os.path.join(data_dir, sorted(files)[-1]) if files else None
 
-def load_forecast(region):
+
+def load_forecast(region: str) -> pd.DataFrame:
     for name in [f"forecast_log_{region}.csv", f"forecast_{region}.csv"]:
-        p = os.path.join(data_dir, name)
-        if os.path.exists(p):
-            df = pd.read_csv(p)
+        path = os.path.join(data_dir, name)
+        if os.path.exists(path):
+            df = pd.read_csv(path)
             df.columns = [c.strip().lower() for c in df.columns]
-            # Parse common date column
             for c in ["date", "day", "ds", "timestamp"]:
                 if c in df.columns:
                     df["date"] = pd.to_datetime(df[c], errors="coerce")
                     break
+            df = df.rename(columns={
+                "bloom_flag":"bloom_risk_flag",
+                "risk_flag":"bloom_risk_flag",
+                "chl_pred":"predicted_chl",
+                "threshold":"threshold_used",
+            })
             return df.sort_values("date").reset_index(drop=True)
     return pd.DataFrame()
 
-def load_env(region):
+
+def load_env(region: str) -> pd.DataFrame:
     f = latest_env_file(region)
     if not f:
         return pd.DataFrame()
     df = pd.read_csv(f)
     df.columns = [c.strip().upper() for c in df.columns]
-    # auto-fix lowercase or DATE columns
-    if "TIME" not in df.columns:
-        for alias in ["TIME", "DATE", "DATETIME", "TS", "time", "date", "datetime", "ts"]:
-            if alias.upper() in df.columns:
-                df = df.rename(columns={alias.upper(): "TIME"})
-                break
-            if alias in df.columns:
-                df = df.rename(columns={alias: "TIME"})
-                break
+    for alias in ["DATETIME", "DATE", "TS", "time", "date", "datetime", "ts"]:
+        if alias.upper() in df.columns and "TIME" not in df.columns:
+            df = df.rename(columns={alias.upper(): "TIME"})
+            break
+        if alias in df.columns and "TIME" not in df.columns:
+            df = df.rename(columns={alias: "TIME"})
+            break
     return df
 
-def likelihood_badge(p):
-    if p is None or pd.isna(p):
-        return "<span class='badge'>—</span>"
-    if p <= 20:
-        return f"<span class='badge low'>{p:.0f}% • Low</span>"
-    elif p <= 60:
-        return f"<span class='badge med'>{p:.0f}% • Moderate</span>"
-    return f"<span class='badge high'>{p:.0f}% • High</span>"
 
-def compute_likelihoods(forecast: pd.DataFrame):
-    """Return (rec7, rec30, risk7, risk30) based on history."""
+def plot_ts(df: pd.DataFrame, x: str, y: str, title: str, ylab: str):
+    fig = px.line(df, x=x, y=y, title=title, template=PLOTLY_TEMPLATE,
+                  color_discrete_sequence=[PRIMARY_GRAD_1])
+    fig.update_layout(margin=dict(l=10, r=10, t=40, b=10))
+    fig.update_yaxes(title=ylab)
+    return fig
+
+
+def summarize_region(forecast: pd.DataFrame) -> dict:
+    out = {"latest_chl": None, "bloom_flag": None, "threshold": None,
+           "rec7": None, "rec30": None, "risk7": None, "risk30": None}
     if forecast.empty:
-        return None, None, 0, 0
+        return out
+    last = forecast.dropna(subset=["date"]).iloc[-1] if "date" in forecast.columns else forecast.iloc[-1]
+    out["latest_chl"] = last.get("predicted_chl")
+    out["threshold"] = last.get("threshold_used")
+    bf = last.get("bloom_risk_flag")
+    out["bloom_flag"] = (str(bf).lower() in ("1","true","yes")) if pd.notna(bf) else None
 
-    # If explicit columns exist, prefer them
-    last = forecast.iloc[-1]
-    rec7 = last.get("recurrence_7d_prob") if "recurrence_7d_prob" in forecast.columns else None
-    rec30 = last.get("recurrence_30d_prob") if "recurrence_30d_prob" in forecast.columns else None
-
-    # Compute flags
-    if {"predicted_chl", "threshold_used"}.issubset(forecast.columns):
+    if "bloom_risk_flag" in forecast.columns:
+        flags = forecast["bloom_risk_flag"].astype(str).str.lower().isin(["1","true","yes"]) 
+    elif {"predicted_chl","threshold_used"}.issubset(forecast.columns):
         flags = forecast["predicted_chl"] >= forecast["threshold_used"]
-    elif "bloom_risk_flag" in forecast.columns:
-        flags = forecast["bloom_risk_flag"].astype(str).str.lower().isin(["1", "true", "yes"])
     else:
-        return rec7, rec30, 0, 0
+        flags = pd.Series([False]*len(forecast), index=forecast.index)
 
-    # Windowed stats by date if available
     if "date" in forecast.columns:
-        fc = forecast.dropna(subset=["date"]).copy()
-        if fc.empty:
-            return rec7, rec30, 0, 0
-        fc["date"] = pd.to_datetime(fc["date"], errors="coerce")
-        fc = fc.dropna(subset=["date"]).reset_index(drop=True)
+        fc = forecast.dropna(subset=["date"]).copy(); fc["date"] = pd.to_datetime(fc["date"], errors="coerce")
+        fc = fc.dropna(subset=["date"]) 
         end = fc["date"].max()
-        idx7 = fc.index[fc["date"] >= end - timedelta(days=7)]
-        idx30 = fc.index[fc["date"] >= end - timedelta(days=30)]
-        risk7 = int(flags.loc[idx7].sum()) if len(idx7) else 0
-        risk30 = int(flags.loc[idx30].sum()) if len(idx30) else 0
-        if rec7 is None and len(idx7):
-            rec7 = round(flags.loc[idx7].mean() * 100, 1)
-        if rec30 is None and len(idx30):
-            rec30 = round(flags.loc[idx30].mean() * 100, 1)
-        return rec7, rec30, risk7, risk30
+        w7 = fc[fc["date"] >= end - timedelta(days=7)].index
+        w30 = fc[fc["date"] >= end - timedelta(days=30)].index
+        out["risk7"] = int(flags.loc[w7].sum()) if len(w7) else 0
+        out["risk30"] = int(flags.loc[w30].sum()) if len(w30) else 0
+        out["rec7"] = float(last.get("recurrence_7d_prob")) if "recurrence_7d_prob" in forecast.columns and pd.notna(last.get("recurrence_7d_prob")) else (round(flags.loc[w7].mean()*100,1) if len(w7) else None)
+        out["rec30"] = float(last.get("recurrence_30d_prob")) if "recurrence_30d_prob" in forecast.columns and pd.notna(last.get("recurrence_30d_prob")) else (round(flags.loc[w30].mean()*100,1) if len(w30) else None)
+    else:
+        out["risk7"], out["risk30"] = int(flags.tail(7).sum()), int(flags.tail(30).sum())
+        out["rec7"], out["rec30"] = round(flags.tail(7).mean()*100,1), round(flags.tail(30).mean()*100,1)
+    return out
 
-    # Fallback when no dates
-    risk7 = int(flags.tail(7).sum())
-    risk30 = int(flags.tail(30).sum())
-    if rec7 is None:
-        rec7 = round(flags.tail(7).mean() * 100, 1)
-    if rec30 is None:
-        rec30 = round(flags.tail(30).mean() * 100, 1)
-    return rec7, rec30, risk7, risk30
+# === MAP ===
+all_lat, all_lon = [], []
+for v in REGIONS.values():
+    lat_min, lat_max, lon_min, lon_max = v["bbox"]
+    all_lat += [lat_min, lat_max]; all_lon += [lon_min, lon_max]
+center = [float(np.mean(all_lat)), float(np.mean(all_lons))] if (all_lat and all_lons := all_lon) else [37.5, 23.5]
 
-# === Map ===
-region = st.session_state.get("region", "thermaikos")
-lat_center = np.mean([REGIONS[r]["bbox"][0] + REGIONS[r]["bbox"][1] for r in REGIONS]) / 2
-lon_center = np.mean([REGIONS[r]["bbox"][2] + REGIONS[r]["bbox"][3] for r in REGIONS]) / 2
+available = [r for r in REGIONS if os.path.exists(os.path.join(data_dir, f"forecast_log_{r}.csv"))]
+if "region" not in st.session_state:
+    st.session_state.region = available[0] if available else "thermaikos"
 
-m = folium.Map(location=[lat_center, lon_center], zoom_start=6, tiles="cartodbpositron")
-for key, val in REGIONS.items():
-    lat_min, lat_max, lon_min, lon_max = val["bbox"]
-    folium.Rectangle(
-        bounds=[[lat_min, lon_min], [lat_max, lon_max]],
-        color=val["color"], fill=True,
-        fill_opacity=0.4, popup=val["title"]
-    ).add_to(m)
+head_cols = st.columns([3,1])
+with head_cols[0]:
+    st.markdown("<div class='section-title' style='margin:16px 0 6px;'>📍 Regions Map (click to select)</div>", unsafe_allow_html=True)
+with head_cols[1]:
+    st.selectbox("Active region", options=list(REGIONS.keys()), format_func=lambda k: REGIONS[k]["title"], key="region")
 
-st.markdown("<br>", unsafe_allow_html=True)
-st.markdown("<div style='text-align:center;color:#A9D6E5;font-weight:600;'>📍 Click a region below</div>", unsafe_allow_html=True)
-click = st_folium(m, height=600, width=1400, key="mars_map")  # Bigger map
+m = folium.Map(location=center, zoom_start=7, tiles="cartodbpositron")
+for k, v in REGIONS.items():
+    lat_min, lat_max, lon_min, lon_max = v["bbox"]
+    folium.Rectangle(bounds=[[lat_min, lon_min],[lat_max, lon_max]], color=v["color"], fill=True,
+                     fill_opacity=0.25 if k != st.session_state.region else 0.5, popup=v["title"]).add_to(m)
 
-if click and click.get("last_clicked"):
-    lat, lon = click["last_clicked"]["lat"], click["last_clicked"]["lng"]
+mret = st_folium(m, height=600, key="mars_map")
+
+# Map click -> pick region by bbox
+if mret and mret.get("last_clicked"):
+    clat = mret["last_clicked"]["lat"]
+    clon = mret["last_clicked"]["lng"]
     for k, v in REGIONS.items():
         lat_min, lat_max, lon_min, lon_max = v["bbox"]
-        if lat_min <= lat <= lat_max and lon_min <= lon <= lon_max:
-            region = k
-st.session_state.region = region
-region_title = REGIONS[region]["title"]
+        if lat_min <= clat <= lat_max and lon_min <= clon <= lon_max:
+            st.session_state.region = k
+            break
 
-# === Data load ===
+region = st.session_state.region
 forecast = load_forecast(region)
 env = load_env(region)
+region_title = REGIONS[region]["title"]
+summary = summarize_region(forecast)
 
-# === KPI Section ===
-st.markdown(f"<h3 style='color:#A9D6E5;margin-top:1em;'>{region_title}</h3>", unsafe_allow_html=True)
-cols_top = st.columns(3)
+# === KPI CARDS ===
 
-with cols_top[0]:
-    val = forecast["predicted_chl"].iloc[-1] if not forecast.empty and "predicted_chl" in forecast.columns else None
-    val_display = f"{val:.3f}" if isinstance(val, (int, float)) and not pd.isna(val) else "—"
+def fmt_val(val, prec: int = 3, suffix: str = "") -> str:
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return "—"
+    try:
+        return f"{float(val):.{prec}f}{suffix}"
+    except Exception:
+        return str(val)
+
+
+def likelihood_badge(pct: float | None) -> str:
+    if pct is None or (isinstance(pct, float) and pd.isna(pct)):
+        return "<span class='badge'>—</span>"
+    if pct <= 20: cls, label = "low", "Low"
+    elif pct <= 60: cls, label = "med", "Moderate"
+    else: cls, label = "high", "High"
+    return f"<span class='badge {cls}'>{pct:.0f}% • {label}</span>"
+
+k1, k2, k3 = st.columns([2,2,3])
+with k1:
+    st.markdown(f"""
+    <div class='kpi'>
+      <div class='label'>{region_title} – CHL</div>
+      <div class='value'>{fmt_val(summary['latest_chl'], 3, ' mg/m³')}</div>
+    </div>""", unsafe_allow_html=True)
+with k2:
+    bloom_txt = 'Yes' if summary['bloom_flag'] is True else ('No' if summary['bloom_flag'] is False else '—')
+    st.markdown(f"""
+    <div class='kpi'>
+      <div class='label'>Bloom Flag (Today)</div>
+      <div class='value'>{bloom_txt}</div>
+    </div>""", unsafe_allow_html=True)
+with k3:
+    st.markdown(f"""
+    <div class='kpi'>
+      <div class='label'>Threshold Used</div>
+      <div class='value'>{fmt_val(summary['threshold'], 3)}</div>
+    </div>""", unsafe_allow_html=True)
+
+# Likelihood row – show numeric percent AND badge
+k4, k5, k6 = st.columns([3,3,2])
+with k4:
+    pct7 = summary['rec7'] if summary['rec7'] is not None else float('nan')
+    pct7_txt = '—' if pd.isna(pct7) else f"{pct7:.0f}%"
+    st.markdown(f"<div class='kpi'><div class='label'>Likelihood (Next 7 d)</div><div class='value'>{pct7_txt}</div>{likelihood_badge(summary['rec7'])}</div>", unsafe_allow_html=True)
+with k5:
+    pct30 = summary['rec30'] if summary['rec30'] is not None else float('nan')
+    pct30_txt = '—' if pd.isna(pct30) else f"{pct30:.0f}%"
+    st.markdown(f"<div class='kpi'><div class='label'>Likelihood (Next 30 d)</div><div class='value'>{pct30_txt}</div>{likelihood_badge(summary['rec30'])}</div>", unsafe_allow_html=True)
+with k6:
+    r7 = summary['risk7'] if summary['risk7'] is not None else 0
+    r30 = summary['risk30'] if summary['risk30'] is not None else 0
+    st.markdown(f"<div class='kpi'><div class='label'>Risk Days (7/30)</div><div class='value'>{r7}/{r30}</div></div>", unsafe_allow_html=True)
+
+# === TABS ===
+
+tab1, tab2, tab3 = st.tabs(["Today’s Forecast", "Environmental Trends", "About MARS"])
+
+with tab1:
+    st.markdown("<div class='section-title'>CHL Forecasts</div>", unsafe_allow_html=True)
+    if not env.empty and "TIME" in env.columns and "CHL" in env.columns:
+        env = env.copy(); env["TIME"] = pd.to_datetime(env["TIME"], errors="coerce"); env = env.dropna(subset=["TIME"])
+        now = env["TIME"].max()
+        last7 = env[env["TIME"] >= now - timedelta(days=7)]
+        last30 = env[env["TIME"] >= now - timedelta(days=30)]
+        c1, c2 = st.columns(2)
+        with c1: st.plotly_chart(plot_ts(last7, "TIME", "CHL", "CHL – Last 7 days", "mg/m³"), use_container_width=True)
+        with c2: st.plotly_chart(plot_ts(last30, "TIME", "CHL", "CHL – Last 30 days", "mg/m³"), use_container_width=True)
+    elif not forecast.empty and {"date","predicted_chl"}.issubset(forecast.columns):
+        st.info("Using predicted CHL from forecast history (env history not found).")
+        st.plotly_chart(px.line(forecast.tail(30), x="date", y="predicted_chl", title="Predicted CHL (last 30 days)",
+                                color_discrete_sequence=[PRIMARY_GRAD_2], template=PLOTLY_TEMPLATE), use_container_width=True)
+    else:
+        st.info("No environmental or forecast CHL series available yet.")
+
+with tab2:
+    st.markdown(f"<div class='section-title'>{region_title} – Environmental Trends (30 days)</div>", unsafe_allow_html=True)
+    if env.empty or "TIME" not in env.columns:
+        st.info("No env_history file with a TIME column found for this region yet.")
+    else:
+        env = env.copy(); env["TIME"] = pd.to_datetime(env["TIME"], errors="coerce")
+        variables = [v for v, _ in ENV_VARS if v in env.columns]
+        if not variables:
+            st.info("No known environmental variables present.")
+        else:
+            chosen = st.multiselect("Variables to plot", variables, default=variables[:2])
+            for v in chosen:
+                label = dict(ENV_VARS).get(v, v)
+                st.plotly_chart(plot_ts(env, "TIME", v, label, label), use_container_width=True)
+
+with tab3:
     st.markdown(
-        f"""
-        <div class='kpi'>
-          <div class='label'>Predicted CHL</div>
-          <div class='value'>{val_display} mg/m³</div>
+        """
+        <div class='soft-card'>
+        <h3 style='margin:0 0 10px 0;'>About MARS</h3>
+        <p><b>MARS – Marine Autonomous Risk System</b> forecasts harmful algal bloom (red tide) risk in the
+        Eastern Mediterranean using daily <b>Copernicus Marine</b> data and a trained machine‑learning model.</p>
+        <p><b>Regions:</b> Thermaikos (GR), Piraeus (GR), Limassol (CY).<br/>
+           <b>Variables:</b> NH₄, NO₃, PO₄, θ (temperature), SO (salinity), CHL.</p>
+        <p><i>Part of Annamaria Souri’s PhD Research – University of Nicosia.</i></p>
         </div>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
-with cols_top[1]:
-    thr = forecast["threshold_used"].iloc[-1] if "threshold_used" in forecast.columns and not forecast.empty else None
-    thr_display = f"{thr:.3f}" if isinstance(thr, (int, float)) and not pd.isna(thr) else "—"
-    st.markdown(
-        f"""
-        <div class='kpi'>
-          <div class='label'>Threshold</div>
-          <div class='value'>{thr_display}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+# --- Diagnostics ---
+with st.expander("🔍 Diagnostics"):
+    st.write("Working directory:", os.getcwd())
+    st.write("Files:", _list_files())
+    st.write("Forecast columns:", list(forecast.columns))
+    st.write("Env columns:", list(env.columns))
 
-with cols_top[2]:
-    rf = forecast["bloom_risk_flag"].iloc[-1] if "bloom_risk_flag" in forecast.columns and not forecast.empty else None
-    rf_label = "Yes" if str(rf).lower() in ("1", "true", "yes") else ("No" if rf is not None else "—")
-    st.markdown(
-        f"""
-        <div class='kpi'>
-          <div class='label'>Bloom Today</div>
-          <div class='value'>{rf_label}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-# --- Compute & show recurrence likelihoods (PERCENTAGES) ---
-rec7, rec30, risk7, risk30 = compute_likelihoods(forecast)
-
-cols_bottom = st.columns(3)
-with cols_bottom[0]:
-    pct_display = f"{rec7:.0f}%" if rec7 is not None and not pd.isna(rec7) else "—"
-    st.markdown(
-        f"""
-        <div class='kpi'>
-          <div class='label'>Likelihood (Next 7 Days)</div>
-          <div class='value'>{pct_display}</div>
-          <div>{likelihood_badge(rec7)}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-with cols_bottom[1]:
-    pct_display = f"{rec30:.0f}%" if rec30 is not None and not pd.isna(rec30) else "—"
-    st.markdown(
-        f"""
-        <div class='kpi'>
-          <div class='label'>Likelihood (Next 30 Days)</div>
-          <div class='value'>{pct_display}</div>
-          <div>{likelihood_badge(rec30)}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-with cols_bottom[2]:
-    st.markdown(
-        f"""
-        <div class='kpi'>
-          <div class='label'>Risk Days (7 / 30)</div>
-          <div class='value'>{risk7}/{risk30}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-# === Charts ===
-st.markdown("<br>", unsafe_allow_html=True)
-if not env.empty and "TIME" in env.columns and "CHL" in env.columns:
-    env["TIME"] = pd.to_datetime(env["TIME"], errors="coerce")
-    env = env.dropna(subset=["TIME"])
-    st.plotly_chart(
-        px.line(
-            env, x="TIME", y="CHL",
-            title="CHL – 30-Day Environmental History",
-            color_discrete_sequence=[PRIMARY_GRAD_2],
-            template=PLOTLY_TEMPLATE
-        ),
-        use_container_width=True
-    )
-elif not forecast.empty and "date" in forecast.columns and "predicted_chl" in forecast.columns:
-    st.plotly_chart(
-        px.scatter(
-            forecast, x="date", y="predicted_chl",
-            title="Predicted CHL (forecast log)",
-            color_discrete_sequence=[PRIMARY_GRAD_1],
-            template=PLOTLY_TEMPLATE
-        ),
-        use_container_width=True
-    )
-else:
-    st.info("No environmental or forecast data found for this region yet.")
-
-# === Footer ===
 st.markdown(
-    f"""
-    <hr style='border:0;height:2px;background:linear-gradient(90deg,{PRIMARY_GRAD_1},{PRIMARY_GRAD_2});opacity:.7;'>
-    <div style='text-align:center;color:#A9D6E5;font-size:12px;'>
-      © {datetime.now().year} MARS • Marine Autonomous Risk System
-    </div>
-    """,
-    unsafe_allow_html=True
+    f"<hr style='margin-top:2em;border:0;height:2px;background:linear-gradient(90deg,{PRIMARY_GRAD_1},{PRIMARY_GRAD_2});opacity:.8;'>"
+    f"<div style='text-align:center;color:{MUTED};font-size:12px;'>© {datetime.now().year} MARS • Research prototype</div>",
+    unsafe_allow_html=True,
 )
