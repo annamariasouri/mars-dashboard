@@ -39,27 +39,24 @@ body {{
   color: white; border-radius: 22px;
   padding: 26px 30px; box-shadow: 0 10px 30px rgba(0,0,0,.6);
 }}
-.kpi {
+.kpi {{
   background: #FFFFFF; /* White cards */
   border-radius: 18px;
   padding: 16px 20px;
   box-shadow: 0 8px 25px rgba(0,0,0,.4);
   text-align: center;
-}
-
-.kpi .label {
+}}
+.kpi .label {{
   color: #0B3954;       /* Deep marine blue text for labels */
   font-size: 14px;
   font-weight: 600;
   letter-spacing: .4px;
-}
-
-.kpi .value {
+}}
+.kpi .value {{
   font-size: 26px;
   font-weight: 800;
   color: #000000;       /* Pure black text for values */
-}
-
+}}
 .badge.low {{ background: rgba(42,157,143,.3); color:{GREEN}; }}
 .badge.med {{ background: rgba(255,183,3,.3); color:{AMBER}; }}
 .badge.high {{ background: rgba(230,57,70,.3); color:{RED}; }}
@@ -77,7 +74,6 @@ iframe, .folium-map {{
 }}
 </style>
 """, unsafe_allow_html=True)
-
 
 # === Sidebar ===
 with st.sidebar:
@@ -257,5 +253,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-
