@@ -1,5 +1,6 @@
 import os
 import re
+from glob import glob
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -11,18 +12,18 @@ from streamlit_folium import st_folium
 # === CONFIG ===
 st.set_page_config(page_title="MARS – Marine Autonomous Risk System", page_icon="🌊", layout="wide")
 
-# Proactively clear any cached data to avoid stale reads per region switch
+# Clear any cached data to avoid stale reads when switching regions
 try:
     st.cache_data.clear()
 except Exception:
     pass
 
-# --- Marine Observatory theme ---
-PRIMARY_DARK = "#062B4F"      # deep ocean
-PRIMARY = "#0B4F6C"           # marine blue
-PRIMARY_GRAD_1 = "#0072BC"    # Copernicus blue
-PRIMARY_GRAD_2 = "#00B4D8"    # aqua
-ACCENT = "#34D1BF"            # teal accent
+# --- Theme ---
+PRIMARY_DARK = "#062B4F"
+PRIMARY = "#0B4F6C"
+PRIMARY_GRAD_1 = "#0072BC"
+PRIMARY_GRAD_2 = "#00B4D8"
+ACCENT = "#34D1BF"
 AMBER = "#FFB703"
 RED = "#D00000"
 GREEN = "#2A9D8F"
@@ -44,45 +45,24 @@ ENV_VARS = [
     ("SO", "Salinity (PSU)"),
 ]
 
-# === THEME CSS ===
+# === THEME CSS (escaped braces) ===
 st.markdown(
     f"""
     <style>
       :root {{
         --grad1: {PRIMARY_GRAD_1};
         --grad2: {PRIMARY_GRAD_2};
-        --primary: {PRIMARY};
-        --dark: {PRIMARY_DARK};
-        --muted: {MUTED};
-        --green: {GREEN};
-        --amber: {AMBER};
-        --red: {RED};
-        --accent: {ACCENT};
       }}
       body {{ background: linear-gradient(180deg,#00111f 0%,#001b33 40%,#001f3f 100%) fixed; color:#E0F2FF; }}
       .marine-hero {{
         background: linear-gradient(90deg, var(--grad1), var(--grad2));
-        color: white;
-        padding: 18px 22px; border-radius: 16px; box-shadow: 0 10px 28px rgba(0,0,0,.25);
-        position: relative; overflow: hidden;
-      }}
-      .wave {{
-        position:absolute;bottom:-10px;left:-5%;right:-5%;height:80px;
-        background: radial-gradient(ellipse at bottom, rgba(255,255,255,.35), rgba(255,255,255,0));
-        filter: blur(14px);
-        animation: swell 6s ease-in-out infinite;
-      }}
-      @keyframes swell {{
-        0% {{ transform: translateY(0px); }}
-        50% {{ transform: translateY(6px); }}
-        100% {{ transform: translateY(0px); }}
+        color: white; padding: 18px 22px; border-radius: 16px; box-shadow: 0 10px 28px rgba(0,0,0,.25);
       }}
       .kpi {{
         background: #ffffff; border: 1px solid rgba(0,0,0,.06); border-radius: 14px;
-        padding: 14px 16px; box-shadow: 0 6px 20px rgba(13, 51, 89, .20);
-        text-align:center;
+        padding: 14px 16px; box-shadow: 0 6px 20px rgba(13, 51, 89, .20); text-align:center;
       }}
-      .kpi .label {{ color: var(--muted); font-size: 13px; letter-spacing: .2px; font-weight:600; }}
+      .kpi .label {{ color: #6B7A90; font-size: 13px; letter-spacing: .2px; font-weight:600; }}
       .kpi .value {{ font-size: 26px; font-weight: 800; color: #000; }}
       .badge {{ display:inline-block; padding:6px 12px; border-radius:999px; font-weight:700; font-size:14px;}}
       .badge.low {{ background: rgba(42,157,143,.15); color:#005f4b; border:1px solid rgba(42,157,143,.35); }}
@@ -101,8 +81,8 @@ with st.sidebar:
     st.markdown("### 🌊 MARS – Marine Autonomous Risk System")
     st.write("Part of **Annamaria Souri**’s PhD research • Powered by **Copernicus Marine**")
 
-# ✅ Data directory
-data_dir = "."
+# Data dir
+DATA_DIR = os.environ.get("MARS_DATA_DIR", ".")
 
 # --- Hero Header ---
 st.markdown(
@@ -116,7 +96,6 @@ st.markdown(
         </div>
         <div style="margin-left:auto;opacity:.9;">Updated daily</div>
       </div>
-      <div class="wave"></div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -124,33 +103,37 @@ st.markdown(
 
 # === HELPERS ===
 
-def _list_files():
+def list_files():
     try:
-        return sorted(os.listdir(data_dir))
+        return sorted(os.listdir(DATA_DIR))
     except Exception:
         return []
 
 
-def latest_env_file(region: str):
-    files = [f for f in _list_files() if re.match(rf"env_history_{region}_.+\\.csv$", f, flags=re.IGNORECASE)]
-    return os.path.join(data_dir, sorted(files)[-1]) if files else None
+def latest_env_file(region: str) -> str | None:
+    # Use glob (case-insensitive not supported natively) – rely on consistent prefix
+    pattern = os.path.join(DATA_DIR, f"env_history_{region}_*.csv")
+    files = sorted(glob(pattern))
+    return files[-1] if files else None
 
 
 def load_forecast(region: str) -> pd.DataFrame:
     for name in [f"forecast_log_{region}.csv", f"forecast_{region}.csv"]:
-        path = os.path.join(data_dir, name)
+        path = os.path.join(DATA_DIR, name)
         if os.path.exists(path):
             df = pd.read_csv(path)
             df.columns = [c.strip().lower() for c in df.columns]
+            # parse date
             for c in ["date", "day", "ds", "timestamp"]:
                 if c in df.columns:
                     df["date"] = pd.to_datetime(df[c], errors="coerce")
                     break
+            # normalize possible alternative names
             df = df.rename(columns={
-                "bloom_flag":"bloom_risk_flag",
-                "risk_flag":"bloom_risk_flag",
-                "chl_pred":"predicted_chl",
-                "threshold":"threshold_used",
+                "bloom_flag": "bloom_risk_flag",
+                "risk_flag": "bloom_risk_flag",
+                "chl_pred": "predicted_chl",
+                "threshold": "threshold_used",
             })
             return df.sort_values("date").reset_index(drop=True)
     return pd.DataFrame()
@@ -161,14 +144,45 @@ def load_env(region: str) -> pd.DataFrame:
     if not f:
         return pd.DataFrame()
     df = pd.read_csv(f)
-    df.columns = [c.strip().upper() for c in df.columns]
-    for alias in ["DATETIME", "DATE", "TS", "time", "date", "datetime", "ts"]:
-        if alias.upper() in df.columns and "TIME" not in df.columns:
-            df = df.rename(columns={alias.upper(): "TIME"})
-            break
-        if alias in df.columns and "TIME" not in df.columns:
-            df = df.rename(columns={alias: "TIME"})
-            break
+    # normalize headings – keep original too for safety
+    cols = {c: c.strip() for c in df.columns}
+    df = df.rename(columns=cols)
+
+    # unify time column
+    time_candidates = [c for c in df.columns if c.lower() in ("time", "date", "datetime", "ts")]
+    if time_candidates:
+        tcol = time_candidates[0]
+        df = df.rename(columns={tcol: "TIME"})
+    else:
+        # attempt to find any datetime-like column
+        for c in df.columns:
+            try:
+                parsed = pd.to_datetime(df[c], errors="coerce")
+                if parsed.notna().sum() > max(1, len(df)//4):
+                    df.insert(0, "TIME", parsed)
+                    break
+            except Exception:
+                continue
+
+    # unify variable names (case-insensitive)
+    rename_map = {}
+    for c in list(df.columns):
+        cl = c.lower()
+        if cl in ("chl", "chlorophyll", "chl_mg_m3"):
+            rename_map[c] = "CHL"
+        elif cl in ("thetao", "theta", "sst", "t", "temp", "temperature"):
+            rename_map[c] = "THETAO"
+        elif cl in ("so", "sal", "salinity"):
+            rename_map[c] = "SO"
+        elif cl in ("nh4",):
+            rename_map[c] = "NH4"
+        elif cl in ("no3",):
+            rename_map[c] = "NO3"
+        elif cl in ("po4",):
+            rename_map[c] = "PO4"
+    if rename_map:
+        df = df.rename(columns=rename_map)
+
     return df
 
 
@@ -191,6 +205,7 @@ def summarize_region(forecast: pd.DataFrame) -> dict:
     bf = last.get("bloom_risk_flag")
     out["bloom_flag"] = (str(bf).lower() in ("1","true","yes")) if pd.notna(bf) else None
 
+    # risk flags
     if "bloom_risk_flag" in forecast.columns:
         flags = forecast["bloom_risk_flag"].astype(str).str.lower().isin(["1","true","yes"]) 
     elif {"predicted_chl","threshold_used"}.issubset(forecast.columns):
@@ -198,21 +213,24 @@ def summarize_region(forecast: pd.DataFrame) -> dict:
     else:
         flags = pd.Series([False]*len(forecast), index=forecast.index)
 
+    # windows
     if "date" in forecast.columns:
         fc = forecast.dropna(subset=["date"]).copy(); fc["date"] = pd.to_datetime(fc["date"], errors="coerce")
-        fc = fc.dropna(subset=["date"]) 
+        fc = fc.dropna(subset=["date"]).reset_index(drop=True)
+        if fc.empty:
+            return out
         end = fc["date"].max()
-        w7 = fc[fc["date"] >= end - timedelta(days=7)].index
-        w30 = fc[fc["date"] >= end - timedelta(days=30)].index
-        out["risk7"] = int(flags.loc[w7].sum()) if len(w7) else 0
-        out["risk30"] = int(flags.loc[w30].sum()) if len(w30) else 0
-        out["rec7"] = float(last.get("recurrence_7d_prob")) if "recurrence_7d_prob" in forecast.columns and pd.notna(last.get("recurrence_7d_prob")) else (round(flags.loc[w7].mean()*100,1) if len(w7) else None)
-        out["rec30"] = float(last.get("recurrence_30d_prob")) if "recurrence_30d_prob" in forecast.columns and pd.notna(last.get("recurrence_30d_prob")) else (round(flags.loc[w30].mean()*100,1) if len(w30) else None)
+        idx7 = fc.index[fc["date"] >= end - timedelta(days=7)]
+        idx30 = fc.index[fc["date"] >= end - timedelta(days=30)]
+        out["risk7"] = int(flags.loc[idx7].sum()) if len(idx7) else 0
+        out["risk30"] = int(flags.loc[idx30].sum()) if len(idx30) else 0
+        out["rec7"] = float(last.get("recurrence_7d_prob")) if "recurrence_7d_prob" in forecast.columns and pd.notna(last.get("recurrence_7d_prob")) else (round(flags.loc[idx7].mean()*100,1) if len(idx7) else None)
+        out["rec30"] = float(last.get("recurrence_30d_prob")) if "recurrence_30d_prob" in forecast.columns and pd.notna(last.get("recurrence_30d_prob")) else (round(flags.loc[idx30].mean()*100,1) if len(idx30) else None)
     else:
         out["risk7"], out["risk30"] = int(flags.tail(7).sum()), int(flags.tail(30).sum())
         out["rec7"], out["rec30"] = round(flags.tail(7).mean()*100,1), round(flags.tail(30).mean()*100,1)
-    return out
 
+    return out
 
 # === MAP ===
 all_lat, all_lon = [], []
@@ -226,8 +244,7 @@ if all_lat and all_lon:
 else:
     center = [37.5, 23.5]
 
-
-available = [r for r in REGIONS if os.path.exists(os.path.join(data_dir, f"forecast_log_{r}.csv"))]
+available = [r for r in REGIONS if os.path.exists(os.path.join(DATA_DIR, f"forecast_log_{r}.csv"))]
 if "region" not in st.session_state:
     st.session_state.region = available[0] if available else "thermaikos"
 
@@ -245,7 +262,6 @@ for k, v in REGIONS.items():
 
 mret = st_folium(m, height=600, key="mars_map")
 
-# Map click -> pick region by bbox
 if mret and mret.get("last_clicked"):
     clat = mret["last_clicked"]["lat"]
     clon = mret["last_clicked"]["lng"]
@@ -261,7 +277,7 @@ env = load_env(region)
 region_title = REGIONS[region]["title"]
 summary = summarize_region(forecast)
 
-# === KPI CARDS ===
+# === KPI helpers ===
 
 def fmt_val(val, prec: int = 3, suffix: str = "") -> str:
     if val is None or (isinstance(val, float) and pd.isna(val)):
@@ -280,6 +296,7 @@ def likelihood_badge(pct: float | None) -> str:
     else: cls, label = "high", "High"
     return f"<span class='badge {cls}'>{pct:.0f}% • {label}</span>"
 
+# === KPI CARDS ===
 k1, k2, k3 = st.columns([2,2,3])
 with k1:
     st.markdown(f"""
@@ -301,7 +318,6 @@ with k3:
       <div class='value'>{fmt_val(summary['threshold'], 3)}</div>
     </div>""", unsafe_allow_html=True)
 
-# Likelihood row – show numeric percent AND badge
 k4, k5, k6 = st.columns([3,3,2])
 with k4:
     pct7 = summary['rec7'] if summary['rec7'] is not None else float('nan')
@@ -369,8 +385,8 @@ with tab3:
 
 # --- Diagnostics ---
 with st.expander("🔍 Diagnostics"):
-    st.write("Working directory:", os.getcwd())
-    st.write("Files:", _list_files())
+    st.write("Working directory:", DATA_DIR)
+    st.write("Files:", list_files())
     st.write("Forecast columns:", list(forecast.columns))
     st.write("Env columns:", list(env.columns))
 
@@ -379,4 +395,3 @@ st.markdown(
     f"<div style='text-align:center;color:{MUTED};font-size:12px;'>© {datetime.now().year} MARS • Research prototype</div>",
     unsafe_allow_html=True,
 )
-
