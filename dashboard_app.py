@@ -24,9 +24,11 @@ PLOTLY_TEMPLATE = "plotly_white"
 # === Global CSS ===
 st.markdown(f"""
 <style>
+/* ==== MARS Deep Ocean Theme ==== */
 body {{
-  background: radial-gradient(circle at 20% 20%, {PRIMARY_DARK} 0%, #001628 100%);
-  color: #FFFFFF;
+  background: linear-gradient(180deg, #00111f 0%, #001b33 40%, #001f3f 100%) fixed;
+  color: #E0F2FF;
+  font-family: 'Inter', sans-serif;
 }}
 .block-container {{
   background: transparent !important;
@@ -34,32 +36,44 @@ body {{
 }}
 .marine-hero {{
   background: linear-gradient(90deg, {PRIMARY_GRAD_1}, {PRIMARY_GRAD_2});
-  color: white; border-radius: 20px;
-  padding: 24px 28px; box-shadow: 0 10px 25px rgba(0,0,0,.4);
+  color: white; border-radius: 22px;
+  padding: 26px 30px; box-shadow: 0 10px 30px rgba(0,0,0,.6);
 }}
 .kpi {{
-  background: rgba(255,255,255,.1);
-  border-radius: 16px;
-  padding: 14px 18px;
-  box-shadow: inset 0 0 12px rgba(255,255,255,.05);
+  background: rgba(255,255,255,.08);
+  border-radius: 18px;
+  padding: 16px 20px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.4);
+  backdrop-filter: blur(6px);
   text-align: center;
 }}
-.kpi .label {{ color: #A9D6E5; font-size: 13px; letter-spacing: .3px; }}
-.kpi .value {{ font-size: 24px; font-weight: 700; color: #FFFFFF; }}
+.kpi .label {{ color: #B7DFFF; font-size: 14px; letter-spacing: .4px; }}
+.kpi .value {{ font-size: 26px; font-weight: 700; color: #FFFFFF; }}
 .badge {{
-  display:inline-block;padding:5px 10px;border-radius:20px;font-size:12px;font-weight:600;
+  display:inline-block;
+  padding:5px 10px;
+  border-radius:20px;
+  font-size:13px;
+  font-weight:600;
 }}
-.badge.low {{ background: rgba(42,157,143,.25);color:{GREEN}; }}
-.badge.med {{ background: rgba(255,183,3,.25);color:{AMBER}; }}
-.badge.high {{ background: rgba(230,57,70,.25);color:{RED}; }}
+.badge.low {{ background: rgba(42,157,143,.3); color:{GREEN}; }}
+.badge.med {{ background: rgba(255,183,3,.3); color:{AMBER}; }}
+.badge.high {{ background: rgba(230,57,70,.3); color:{RED}; }}
 .soft-card {{
-  background: rgba(255,255,255,.05);
+  background: rgba(255,255,255,.08);
   border:1px solid rgba(255,255,255,.1);
-  border-radius:20px;padding:16px;
-  box-shadow:0 6px 16px rgba(0,0,0,.3);
+  border-radius:20px;
+  padding:18px;
+  box-shadow:0 8px 28px rgba(0,0,0,.5);
+}}
+/* === Map styling === */
+iframe, .folium-map {{
+  border-radius: 16px;
+  box-shadow: 0 0 40px rgba(0,0,0,0.7);
 }}
 </style>
 """, unsafe_allow_html=True)
+
 
 # === Sidebar ===
 with st.sidebar:
@@ -239,3 +253,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
